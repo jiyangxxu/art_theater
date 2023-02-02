@@ -1,0 +1,95 @@
+---
+title: "Art Theater Project"
+author: "Jiyang Xu"
+date: "2023-01-27"
+output: pdf_document
+---
+```{r}
+# 1. Processing Data ("ticket_sales_by_showing.txt" and "gross_revenue_by_event.txt")
+# a. ticket_sales_by_showing.txt
+# Overall information
+file.info("ticket_sales_by_showing.txt")$size
+ticket_sales_ <- read.csv("ticket_sales_by_showing.txt")
+
+# Filtering data of ticket sales in Auguest 2019, the last month the theater opens
+ticket_sale <- ticket_sales_[grepl("2019", ticket_sales_$EventDate) & grepl("Aug", ticket_sales_$EventDate) & (ticket_sales_$TicketType == "Member" | ticket_sales_$TicketType == "Adult" | ticket_sales_$TicketType == "Student" | ticket_sales_$TicketType == "Senior Citizen"),]
+ticket_sale <- ticket_sale[,c(-1,-3,-4,-7,-8)]
+
+# count the occurrences of different movies and drop the movies occur below 15
+table(ticket_sale$EventName)
+ticket_sale_ <- ticket_sale[ticket_sale$EventName == 'Echo In The Canyon' | ticket_sale$EventName == "Maiden" | ticket_sale$EventName == "Ophelia" | ticket_sale$EventName == "Pavarotti" | ticket_sale$EventName == "The Farewell",]
+# Set event name, ticket type, and item price as factor parameters, quantity as the respond variable
+ticket_sale_$EventName <- as.factor(ticket_sale_$EventName)
+is.factor(ticket_sale_$EventName)
+table(ticket_sale_$EventName) 
+nlevels(ticket_sale_$EventName)
+ticket_sale_$TicketType <- as.factor(ticket_sale_$TicketType)
+nlevels(ticket_sale_$TicketType)
+ticket_sale_
+# Now the data frame of ticket sales is the data represents the events that have relatively complete records (#data total >= 15) and four different groups of people (member, adult, student, and senior citizen) in August 2019, one month before the art theater closed 
+
+# b. gross_revenue_by_event.txt
+file.info("gross_revenue_by_event.txt")$size
+gross_revenue <- read.csv("gross_revenue_by_event.txt")
+
+# Filtering data of five movies selected
+gross_revenue_ <- gross_revenue[gross_revenue$Event == 'Echo In The Canyon' | gross_revenue$Event == "Maiden" | gross_revenue$Event == "Ophelia" | gross_revenue$Event == "Pavarotti" | gross_revenue$Event == "The Farewell",]
+gross_revenue_
+# Now the data frame of gross revenue is the data represents the events that have relatively complete records (#data total >= 15) in Auguest 2019
+```
+
+```{r}
+# 2. Two-Way Anova
+boxplot(Quantity~EventName, data = ticket_sale_, outline=FALSE)
+stripchart(Quantity~EventName, data=ticket_sale_, method="jitter", col="blue", vertical=TRUE, add=TRUE)
+```
+Based on this plot, we find that five events are at the same level except ophelia and we cannot tell whether there is a statistically difference here.
+
+```{r}
+boxplot(Quantity~TicketType, data = ticket_sale_, outline=FALSE)
+stripchart(Quantity~TicketType, data=ticket_sale_, method="jitter", col="blue", vertical=TRUE, add=TRUE)
+```
+Based on this plot, we find that quantity at all four levels are at different level but adult and senior citizen, student and member have relatively same level. However, we cannot tell whether there is a statistically difference here since there are boxes overlap here.
+
+```{r}
+# construct the interaction plots
+interaction.plot(ticket_sale_$TicketType, ticket_sale_$EventName, ticket_sale_$Quantity)
+interaction.plot(ticket_sale_$EventName, ticket_sale_$TicketType, ticket_sale_$Quantity)
+```
+There are intercetions in both groups
+
+```{r}
+# Investigate whether the interactions are statistically significant or not
+# start with the model with interactions
+library(car)
+ticket_sale_full = lm(Quantity ~ EventName*TicketType, data = ticket_sale_)
+summary(ticket_sale_full)
+Anova(lm(Quantity ~ EventName*TicketType, data = ticket_sale_), type = "III")
+```
+The p-value of interaction here is 6.076e-13, which is statistically significant, so we don't remove it and the full model is the final model.
+
+```{r}
+# 3. Check Model Assumption
+par(mfrow=c(1,2))
+plot(ticket_sale_full$fitted, ticket_sale_full$res, xlab="Fitted", ylab="Residuals")
+
+# Checking Constancy of Variance
+plot(ticket_sale_full, which = 1)
+library(lmtest)
+bptest(ticket_sale_full)
+
+# Checking Normality
+qqnorm(ticket_sale_full$res)
+hist(ticket_sale_full$residuals)
+shapiro.test(ticket_sale_full$residuals)
+```
+Reject null hypothesis in both bp test and shapiro test, which indicates that the model satisfies normality and constant varance assumptions. No model transformation needed.
+
+```{r}
+# 4. Pairwise Comparisons
+library(DescTools)
+ANOVA=aov(ticket_sale_full)
+ScheffeTest(ANOVA)
+```
+From the Scheffe family CIs shown in the table, "The Farewell:Student-Pavarotti:Senior Citizen" with a p-value of 3.6e-16, "The Farewell:Senior Citizen-Pavarotti:Senior Citizen" with 9.3e-15, "Pavarotti:Senior Citizen-The Farewell:Adult" with 2.1e-11, "Pavarotti:Senior Citizen-Echo In The Canyon:Adult" with 9.3e-10, "Pavarotti:Senior Citizen-Ophelia:Adult" with 3.5e-09... 
+Based on this output, by looking at the p-values, we can say that the highest quantity given the data set and background information is event "Pavarotti" with ticket type of "Senior Citizen" while the lowest quantity is event "The Farewell" with ticket type "Student".
