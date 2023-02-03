@@ -5,6 +5,9 @@ date: "2023-01-27"
 output: pdf_document
 ---
 ```{r}
+# Main question: How does quantity change as the categories of event and ticket type change? 
+# Main target: Finding most targeting group from four major consumer types(students, adults, members, senior citizen) for speciﬁc event based on estimating ticket type for different events that results in the highest quantity for the art theater in August 2019
+
 # 1. Processing Data ("ticket_sales_by_showing.txt" and "gross_revenue_by_event.txt")
 # a. ticket_sales_by_showing.txt
 # Overall information
@@ -92,4 +95,7 @@ ANOVA=aov(ticket_sale_full)
 ScheffeTest(ANOVA)
 ```
 From the Scheffe family CIs shown in the table, "The Farewell:Student-Pavarotti:Senior Citizen" with a p-value of 3.6e-16, "The Farewell:Senior Citizen-Pavarotti:Senior Citizen" with 9.3e-15, "Pavarotti:Senior Citizen-The Farewell:Adult" with 2.1e-11, "Pavarotti:Senior Citizen-Echo In The Canyon:Adult" with 9.3e-10, "Pavarotti:Senior Citizen-Ophelia:Adult" with 3.5e-09... 
+
 Based on this output, by looking at the p-values, we can say that the highest quantity given the data set and background information is event "Pavarotti" with ticket type of "Senior Citizen" while the lowest quantity is event "The Farewell" with ticket type "Student".
+
+*Further investigations are shown in the presentation.
