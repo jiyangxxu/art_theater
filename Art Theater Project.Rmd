@@ -6,7 +6,8 @@ output: pdf_document
 ---
 ```{r}
 # Main question: How does quantity change as the categories of event and ticket type change? 
-# Main target: Finding most targeting group from four major consumer types(students, adults, members, senior citizen) for speciﬁc event based on estimating ticket type for different events that results in the highest quantity for the art theater in August 2019
+# Main goal: 
+# Finding the most targeting group from four major consumer types(students, adults, members, senior citizen) for speciﬁc event based on estimating ticket type for different events that results in the highest quantity for the art theater in August 2019, which is the same as finding the combination of event and the ticket type results in the highest and lowest sales of tickets in August 2019
 
 # 1. Processing Data ("ticket_sales_by_showing.txt" and "gross_revenue_by_event.txt")
 # a. ticket_sales_by_showing.txt
@@ -40,6 +41,24 @@ gross_revenue_ <- gross_revenue[gross_revenue$Event == 'Echo In The Canyon' | gr
 gross_revenue_
 # Now the data frame of gross revenue is the data represents the events that have relatively complete records (#data total >= 15) in Auguest 2019
 ```
+
+```{r}
+# First using mosaic plot to show the percentages of data and rough distribution of event and ticket type
+library(vcd)
+# hard to see the full name of events in the graph, so use the first letter
+ticket_sale <- ticket_sale_
+ticket_sale$TicketType <- as.factor(ticket_sale$TicketType)
+ticket_sale$EventName <- as.factor(ticket_sale$EventName)
+levels(ticket_sale$EventName)
+levels(ticket_sale$TicketType)
+levels(ticket_sale$EventName) <- c("E", "M", "O", "P", "F")
+levels(ticket_sale$TicketType) <- c("A", "M", "SS", "SDT")
+btable <- xtabs(Quantity ~ TicketType+EventName, data = ticket_sale)
+btable
+mosaic(t(btable), spacing = spacing_increase(start = 0.5, rate = 0.6), shade = TRUE)
+```
+Based on the mosaic plot above, senior citizen group in "Echo In The Canyon", senior citizen group in "Pavarotti", "The Farewell" in adult and member groups are significant here, and further hypothesis tests are conducted to test for our assumptions.
+
 
 ```{r}
 # 2. Two-Way Anova
@@ -94,8 +113,8 @@ library(DescTools)
 ANOVA=aov(ticket_sale_full)
 ScheffeTest(ANOVA)
 ```
-From the Scheffe family CIs shown in the table, "The Farewell:Student-Pavarotti:Senior Citizen" with a p-value of 3.6e-16, "The Farewell:Senior Citizen-Pavarotti:Senior Citizen" with 9.3e-15, "Pavarotti:Senior Citizen-The Farewell:Adult" with 2.1e-11, "Pavarotti:Senior Citizen-Echo In The Canyon:Adult" with 9.3e-10, "Pavarotti:Senior Citizen-Ophelia:Adult" with 3.5e-09... 
+From the Scheffe family CIs shown in the table, "The Farewell:Student-Pavarotti:Senior Citizen" with a p-value of 3.6e-16, "The Farewell:Senior Citizen-Pavarotti:Senior Citizen" with 9.3e-15, "Pavarotti:Senior Citizen-The Farewell:Adult" with 2.1e-11, "Pavarotti:Senior Citizen-Echo In The Canyon:Adult" with 9.3e-10, "Pavarotti:Senior Citizen-Ophelia:Adult" with 3.5e-09, "Echo In The Canyon:Student-Pavarotti:Senior Citizen" with 4.6e-09, "Pavarotti:Senior Citizen-Pavarotti:Member" with 5.8e-09, "Pavarotti:Senior Citizen-Pavarotti:Adult" with 9.7e-08... to Pavarotti:Senior Citizen-Maiden:Member with 0.0259.
 
-Based on this output, by looking at the p-values, we can say that the highest quantity given the data set and background information is event "Pavarotti" with ticket type of "Senior Citizen" while the lowest quantity is event "The Farewell" with ticket type "Student".
+Based on this output, by looking at the p-values, we can say that the highest quantity given the data set and background information is event "Pavarotti" with ticket type of "Senior Citizen", the second highest is event Maiden of ticket type "Member" while the lowest quantity is event "The Farewell" with ticket type "Student".
 
 *Further investigations are shown in the presentation.
