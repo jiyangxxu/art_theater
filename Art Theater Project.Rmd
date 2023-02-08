@@ -105,7 +105,7 @@ qqnorm(ticket_sale_full$res)
 hist(ticket_sale_full$residuals)
 shapiro.test(ticket_sale_full$residuals)
 ```
-Reject null hypothesis in both bp test and shapiro test, which indicates that the model satisfies normality and constant varance assumptions. No model transformation needed.
+Reject null hypothesis in both bp test and shapiro test, which indicates that the model satisfies normality and constant variance assumptions. No model transformation needed.
 
 ```{r}
 # 4. Pairwise Comparisons
