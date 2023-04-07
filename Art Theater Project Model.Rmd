@@ -1,0 +1,218 @@
+---
+title: "Art Theater Project Model"
+author: "Jiyang Xu"
+date: "2023-04-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(VGAM)
+library(nnet)
+library(car)
+library(dplyr)
+```
+
+
+```{r}
+art_theather <- read.csv("art_theater.csv")
+head(art_theather)
+```
+
+### Chi-Square tests between ticket type & movie genre
+```{r,warning=F}
+p <- lapply(art_theather[,-c(1,2,3,8,9,10,11,12,13)], function(x) chisq.test(x, art_theather[,c(14)], correct = F)$p.value)
+pVal=data.frame(p$Adult,p$Senior.Citizen,p$Student,p$Other)
+p.adjust(pVal, method="bonferroni")
+```
+
+
+### Chi-Square tests between concession type & movie genre
+```{r,warning=FALSE}
+p <- lapply(art_theather[,-c(1,2,3,4,5,6,7,12,13)], function(x) chisq.test(x, art_theather[,c(14)], correct = F)$p.value)
+pVal=data.frame(p$Candy,p$Non.Alcoholic.Beverages,p$Popcorn,p$Booze)
+p.adjust(pVal, method="bonferroni")
+```
+
+### 8 levels of movie genres
+```{r}
+unique(art_theather$main_genre)
+```
+
+```{r}
+# find max group
+df <- art_theather[,-c(1,2,3)] %>% group_by(main_genre) %>% 
+                            summarise(total = sum(Adult+Senior.Citizen+Student+Candy
+                                                  +Non.Alcoholic.Beverages+Popcorn+Booze+Baked.Goods+Promotions))
+df <- df[order(df$total),]
+head(df,8)
+```
+
+
+### full model with all variables WITH "vglm" function
+### Horror is the baseline for response
+```{r, warning=F}
+mod1 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather) 
+summary(mod1)
+```
+### drop student
+```{r, warning=F}
+mod2 <- vglm(main_genre~Adult+Senior.Citizen+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather) 
+
+anova.vglm(mod1, mod2, type = 1, test = "LRT")
+```
+
+### drop senior citizen
+```{r,warning=F}
+mod3 <- vglm(main_genre~Adult+Student+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather)
+
+anova(mod1, mod3, type=1, test = "LRT")
+```
+
+### drop adult
+```{r,warning=F}
+mod4 <- vglm(main_genre~Senior.Citizen+Student+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather) 
+
+anova(mod1, mod4, type=1, test="LRT")
+```
+
+### drop other
+```{r,warning=F}
+mod5 <- vglm(main_genre~Adult+Senior.Citizen+Student+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather) 
+
+anova(mod1,mod5,test="LRT", type=1)
+```
+
+
+### drop candy
+```{r,warning=F}
+mod6 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+               Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial,data=art_theather) 
+
+anova(mod1, mod6, type=1, test="LRT")
+```
+
+### drop non-alcoholic beverages
+```{r,warning=F}
+mod6 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn+Booze, family=multinomial,data=art_theather) 
+
+anova(mod1, mod6, type=1, test="LRT")
+```
+
+### drop popcorn
+```{r,warning=F}
+mod7 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+              Booze, family=multinomial,data=art_theather) 
+
+anova(mod1, mod7, type=1, test="LRT")
+```
+### drop booze
+```{r,warning=F}
+mod8 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+              Popcorn, family=multinomial,data=art_theather)
+
+anova(mod1, mod8, type=1, test="LRT")
+```
+### final reduced model WITH "vglm" function
+```{r,warning=F}
+redmod1 <- vglm(main_genre~Adult+Senior.Citizen+Student+Other+
+              Popcorn, family=multinomial,data=art_theather)
+summary(redmod1)
+```
+
+
+```{r}
+art_theather <- transform(
+  art_theather,
+  main_genre = factor(main_genre,
+                      levels=c("Horror","Drama","Animation","Comedy","Biography","Adventure","Action","Crime"))
+)
+```
+
+
+### full model with all variables WITH "multinom" function
+```{r,warning=F}
+mod1 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, data=art_theather)
+z <- summary(mod1)$coefficients/summary(mod1)$standard.errors
+p <- data.frame((1 - pnorm(abs(z), 0, 1)) * 2)
+p
+
+Anova(mod1, type="III")
+```
+### drop Non-Alcoholic Beverages
+```{r}
+mod2 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Candy+Popcorn+Booze, data=art_theather)
+
+Anova(mod2, type="III")
+```
+
+### drop Candy
+```{r}
+mod3 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn+Booze, data=art_theather)
+
+Anova(mod3, type="III")
+```
+
+### drop Booze
+```{r}
+mod4 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn, data=art_theather)
+
+Anova(mod4, type="III")
+```
+
+### final reduced model WITH "multinom" function
+```{r}
+redmod2 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn, data=art_theather)
+z <- summary(redmod2)$coefficients/summary(redmod2)$standard.errors
+data.frame((1 - pnorm(abs(z), 0, 1)) * 2)
+```
+
+### For prediction purpose, reduced model with Adult, Senior Citizen, Student, Other, Popcorn predictors would be the best.
+
+```{r,warning=F}
+# Baseline: Other
+mod1 <- vglm(cbind(Adult,Senior.Citizen,Student,Other)~
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, family=multinomial, data=art_theather) 
+
+summary(mod1)
+```
+
+
+```{r}
+# Baseline: Other
+mod2 <- multinom(cbind(Other,Adult,Senior.Citizen,Student)~
+               Non.Alcoholic.Beverages+Popcorn+Booze+Candy, data=art_theather) 
+
+z <- summary(mod2)$coefficients/summary(mod2)$standard.errors
+p <- data.frame((1 - pnorm(abs(z), 0, 1)) * 2)
+p
+
+Anova(mod2, type="III")
+```
+
+```{r, warning=F}
+p <- c()
+for(i in 4:7) {
+  for(j in 8:11) {
+    p = c(p,chisq.test(art_theather[[i]], art_theather[[j]], correct = F)$p.value)
+  }
+}
+p.adjust(p,method="bonferroni")
+# sum(p.adjust(p,method="bonferroni")<=0.05)
+```
+
+
