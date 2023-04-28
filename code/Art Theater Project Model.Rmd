@@ -1,0 +1,386 @@
+---
+title: "Art Theater Project Model"
+author: "Jiyang Xu"
+date: "2023-04-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(VGAM)
+library(nnet)
+library(car)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(glmnet)
+library(pROC)
+library(caret)
+library(smotefamily)
+```
+
+```{r}
+art_theather <- read.csv("art_theater.csv")
+head(art_theather)
+```
+
+```{r}
+# visualize data first
+ggplot(art_theather, aes(art_theather[,14], fill = art_theather[,14])) + 
+  geom_bar() +
+  ggtitle("Histogram of Counts for Different Genres") +
+  xlab("Genre") + ylab("Count") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+same genre has extremely small sample size
+
+
+### Chi-Square tests between ticket type & movie genre
+```{r,warning=F}
+p <- lapply(art_theather[,-c(1,2,3,8,9,10,11,12,13)], function(x) chisq.test(x, art_theather[,c(14)], correct = F)$p.value)
+pVal=data.frame(p$Adult,p$Senior.Citizen,p$Student,p$Other)
+p.adjust(pVal, method="bonferroni")
+```
+
+
+### Chi-Square tests between concession type & movie genre
+```{r,warning=FALSE}
+p <- lapply(art_theather[,-c(1,2,3,4,5,6,7,12,13)], function(x) chisq.test(x, art_theather[,c(14)], correct = F)$p.value)
+pVal=data.frame(p$Candy,p$Non.Alcoholic.Beverages,p$Popcorn,p$Booze)
+p.adjust(pVal, method="bonferroni")
+```
+
+```{r}
+### 8 levels of movie genres
+
+unique(art_theather$main_genre)
+art_theather$main_genre <- as.factor(art_theather$main_genre)
+
+# Baked Goods & Promotions useless because of quasi-complete seperation
+art_theather <- art_theather[,-c(1,2,3,12,13)]
+```
+
+```{r}
+set.seed(123)
+
+trainIndex <- createDataPartition(art_theather$main_genre, p = 0.8, list = FALSE)
+training <- art_theather[trainIndex, ]
+testing <- art_theather[-trainIndex, ]
+```
+
+```{r}
+head(training)
+```
+
+```{r}
+head(testing)
+```
+
+
+### 1. Model 1: baseline category logit model 
+```{r,warning=F}
+mod1 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Candy+Non.Alcoholic.Beverages+Popcorn+Booze, data=training)
+z <- summary(mod1)$coefficients/summary(mod1)$standard.errors
+p <- data.frame((1 - pnorm(abs(z), 0, 1)) * 2)
+p
+
+Anova(mod1, type="III")
+```
+### drop Non-Alcoholic Beverages
+```{r}
+mod2 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Candy+Popcorn+Booze, data=training)
+
+Anova(mod2, type="III")
+```
+
+### drop Candy
+```{r}
+mod3 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn+Booze, data=training)
+
+Anova(mod3, type="III")
+```
+
+### drop Booze
+```{r}
+mod4 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn, data=training)
+
+Anova(mod4, type="III")
+```
+
+### final reduced model WITH "multinom" function
+```{r}
+redmod2 <- multinom(main_genre~Adult+Senior.Citizen+Student+Other+
+               Popcorn, data=training)
+z <- summary(redmod2)$coefficients/summary(redmod2)$standard.errors
+data.frame((1 - pnorm(abs(z), 0, 1)) * 2)
+```
+
+### For prediction purpose, reduced model with Adult, Senior Citizen, Student, Other, Popcorn predictors would be the best.
+
+### Calculate MSE for this multinomial model
+```{r}
+pred <- predict(redmod2, testing[,-9], type="class")
+acc <- confusionMatrix(pred, testing[,9])$overall[1]
+acc
+```
+Poor model :|
+
+### Grouped Lasso: forcing the coefficients to be same
+### Dimension Reduction
+
+```{r}
+X <- as.matrix(training[,-c(9)])
+y <- as.matrix(training[,c(9)])
+```
+
+```{r}
+modlasso <- glmnet(X, y, family = "multinomial")
+plot(modlasso, xvar="lambda")
+```
+
+```{r}
+set.seed(123)
+cvfit <- cv.glmnet(X, y, family="multinomial", type.measure="class")
+plot(cvfit)
+```
+
+```{r}
+coef(modlasso, s=cvfit$lambda.min)
+```
+
+### Action
+```{r}
+action_train <- training
+action_test <- testing
+action_train$main_genre <- ifelse(action_train$main_genre=="Action", 1, 0)
+action_test$main_genre <- ifelse(action_test$main_genre=="Action", 1, 0)
+```
+
+```{r}
+# handle imbalanced data by oversampling: 
+# Adaptive Synthetic Sampling Approach for Imbalanced Learning
+
+action_train <- ADAS(action_train[,-9], action_train[,9])$data
+```
+
+```{r}
+action_train$main_genre <- as.numeric(action_train$class)
+```
+
+
+```{r}
+action <- glm(main_genre~Senior.Citizen+Student+Other
+              +Non.Alcoholic.Beverages+Popcorn, family=binomial, data=action_train)
+```
+
+```{r}
+n <- 1982 # training set obs.
+cv_preds <- numeric(n)
+cv_probs <- numeric(n)
+```
+
+
+```{r, warning=F}
+for (i in 1:n) {
+  train_data <- action_train[-i, ]
+  test_data <- action_train[i, ]
+
+  cv_probs[i] <- predict(action, train_data[,-c(9,10)], type = "response")
+  cv_preds[i] <- ifelse(cv_probs[i] > 0.01, 1, 0)
+}
+```
+Funny model due to the small number of 1s.
+
+```{r}
+f1_score <- function(actual, predicted) {
+  tp <- sum(actual == 1 & predicted == 1)
+  fp <- sum(actual == 0 & predicted == 1)
+  fn <- sum(actual == 1 & predicted == 0)
+  
+  precision <- tp / (tp + fp)
+  recall <- tp / (tp + fn)
+  
+  f1 <- 2 * precision * recall / (precision + recall)
+  
+  return(f1)
+}
+```
+
+```{r}
+f1_score(action_train[,10], cv_preds)
+```
+
+```{r}
+cv_preds <- predict(action, action_test[,-9], type="response")
+cv_preds <- ifelse(cv_preds > 0.8, 1, 0)
+f1_score(action_test[,9], cv_preds)
+```
+bad model :|
+
+### Adventure
+```{r}
+adventure_train <- training
+adventure_test <- testing
+adventure_train$main_genre <- ifelse(adventure_train$main_genre=="Adventure", 1, 0)
+adventure_test$main_genre <- ifelse(adventure_test$main_genre=="Adventure", 1, 0)
+```
+
+```{r}
+adventure <- glm(main_genre~Booze, family=binomial, data=adventure_train)
+```
+
+### Animation
+```{r}
+animation_train <- training
+animation_test <- testing
+animation_train$main_genre <- ifelse(animation_train$main_genre=="Animation", 1, 0)
+animation_test$main_genre <- ifelse(animation_test$main_genre=="Animation", 1, 0)
+```
+
+```{r}
+animation <- glm(main_genre~Student+Non.Alcoholic.Beverages+Popcorn, 
+                 family = binomial,
+                 data=animation_train)
+```
+
+### Biography
+```{r}
+biography_train <- training
+biography_test <- testing
+biography_train$main_genre <- ifelse(biography_train$main_genre=="Biography", 1, 0)
+biography_test$main_genre <- ifelse(biography_test$main_genre=="Biography", 1, 0)
+```
+
+```{r}
+biography <- glm(main_genre~Other+Adult+Senior.Citizen+Candy, 
+                 family = binomial,
+                 data=biography_train)
+```
+
+
+### Comedy
+```{r}
+comedy_train <- training
+comedy_test <- testing
+comedy_train$main_genre <- ifelse(comedy_train$main_genre=="Comedy", 1, 0)
+comedy_test$main_genre <- ifelse(comedy_test$main_genre=="Comedy", 1, 0)
+```
+
+```{r}
+comedy <- glm(main_genre~Other+Adult+Senior.Citizen+Student+Candy
+              +Non.Alcoholic.Beverages+Booze, 
+                 family = binomial,
+                 data=comedy_train)
+```
+
+
+### Drama
+```{r}
+drama_train <- training
+drama_test <- testing
+drama_train$main_genre <- ifelse(drama_train$main_genre=="Drama", 1, 0)
+drama_test$main_genre <- ifelse(drama_test$main_genre=="Drama", 1, 0)
+```
+
+```{r}
+drama <- glm(main_genre~Other+Adult+Senior.Citizen+Student+Candy, 
+                 family = binomial,
+                 data=drama_train)
+```
+
+
+### Horror
+```{r}
+horror_train <- training
+horror_test <- testing
+horror_train$main_genre <- ifelse(horror_train$main_genre=="Horror", 1, 0)
+horror_test$main_genre <- ifelse(horror_test$main_genre=="Horror", 1, 0)
+```
+
+```{r}
+horror <- glm(main_genre~Other+Adult+Senior.Citizen+Student+Candy, 
+                 family = binomial,
+                 data=horror_train)
+```
+
+```{r}
+# prediction
+action <- predict(action, action_test[,-9], type="response")
+adventure <- predict(adventure, adventure_test[,-9], type="response")
+animation <- predict(animation, animation_test[,-9], type="response")
+biography <- predict(biography, biography_test[,-9], type="response")
+comedy <- predict(comedy, comedy_test[,-9], type="response")
+drama <- predict(drama, drama_test[,-9], type="response")
+horror <- predict(horror, horror_test[,-9], type="response")
+```
+
+```{r}
+# finding threshold
+
+```
+
+
+### 3. H2O
+```{r}
+library(h2o)
+localH2O = h2o.init()
+```
+
+```{r}
+df <- h2o.importFile("art_theater.csv")
+df$Adult <- as.factor(df$Adult)
+df$`Senior Citizen` <- as.factor(df$`Senior Citizen`)
+df$Student <- as.factor(df$Student)
+df$Other <- as.factor(df$Other)
+df$Candy <- as.factor(df$Candy)
+df$`Non-Alcoholic Beverages` <- as.factor(df$`Non-Alcoholic Beverages`)
+df$Popcorn <- as.factor(df$Popcorn)
+df$Booze <- as.factor(df$Booze)
+df$main_genre <- as.factor(df$main_genre)
+df <- df[-c(1,2,3,12,13)]
+
+df_splits <- h2o.splitFrame(data =  df, ratios = 0.8, seed = 123)
+train <- df_splits[[1]]
+test <- df_splits[[2]]
+```
+
+
+```{r}
+col_names <- h2o.colnames(df)
+col_names
+```
+
+
+```{r}
+aml <- h2o.automl(x = c("Adult", "Senior Citizen", "Student", "Other",
+                       "Candy", "Non-Alcoholic Beverages", "Popcorn",
+                       "Booze"), y = "main_genre",
+                  training_frame = train,
+                  max_models = 20,
+                  seed = 1)
+```
+
+```{r}
+# View the AutoML Leaderboard
+lb <- aml@leaderboard
+print(lb, n = nrow(lb))  # Print all rows instead of default (6 rows)
+```
+XGBoost, Default Random Forest(DRF) etc. are best models
+
+```{r}
+# The leader model is stored here
+aml.leader <- h2o.get_best_model(aml, criterion = "MSE")
+```
+
+```{r}
+perf <- h2o.performance(aml.leader, newdata = test)
+show(perf)
+```
+
